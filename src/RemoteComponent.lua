@@ -477,6 +477,12 @@ function Component:_instanceAdded(instance)
 	obj._id = id
 	self._instancesToObjects[instance] = obj
 	table.insert(self._objects, obj)
+	if (self._hasInit) then
+		Thread.Spawn(function()
+			if (self._instancesToObjects[instance] ~= obj) then return end
+			obj:Init()
+		end)
+	end
     if (IS_SERVER) then
 		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
 
@@ -519,18 +525,6 @@ function Component:_instanceAdded(instance)
                 end
             end
         end
-
-        --[[
-
-        
-
-                    ]]
-	end
-	if (self._hasInit) then
-		Thread.Spawn(function()
-			if (self._instancesToObjects[instance] ~= obj) then return end
-			obj:Init()
-		end)
 	end
 	self.Added:Fire(obj)
 	return obj
