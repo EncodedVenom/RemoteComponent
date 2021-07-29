@@ -26,7 +26,7 @@
                 Component = {Client = {
                     	SignalExample = RemoteSignal.new();
                 	}
-				}
+		}
 
                 function Component.Client:FunctionExample(Player, arguments)
                     -- do stuff with the arguments
