@@ -24,8 +24,9 @@
                     *Component.Client.Server is a direct reference to the Component itself!
 
                 Component = {Client = {
-                    SignalExample = RemoteSignal.new();
-                }
+                    	SignalExample = RemoteSignal.new();
+                	}
+				}
 
                 function Component.Client:FunctionExample(Player, arguments)
                     -- do stuff with the arguments
