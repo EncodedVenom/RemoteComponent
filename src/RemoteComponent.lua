@@ -41,6 +41,8 @@
                 self.Server.SignalExample:Fire()
 
                 self.Server:FunctionExample("Demo")
+
+				self.Server:FunctionExamplePromise("Done"):Await() -- Promises are automatically created!
 ]]
 
 --[[
