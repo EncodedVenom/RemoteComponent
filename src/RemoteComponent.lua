@@ -137,11 +137,11 @@ local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
 
--- Components will only work on instances parented under these descendants:
-local DESCENDANT_WHITELIST = {workspace, Players}
-
 local Component = {}
 Component.__index = Component
+
+-- Components will only work on instances parented under these descendants:
+Component.DefaultDescendantWhitelist = {workspace, Players}
 
 local componentsByTag = {}
 
@@ -162,15 +162,6 @@ local function GetOrCreate(Parent, Name, Class)
     else
         return Parent:WaitForChild(Name)
     end
-end
-
-local function IsDescendantOfWhitelist(instance)
-	for _,v in ipairs(DESCENDANT_WHITELIST) do
-		if (instance:IsDescendantOf(v)) then
-			return true
-		end
-	end
-	return false
 end
 
 
@@ -248,6 +239,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._hasDeinit = (type(class.Deinit) == "function")
 	self._renderPriority = renderPriority or Enum.RenderPriority.Last.Value
 	self._requireComponents = requireComponents or {}
+	self._whitelist = class.DescendantWhitelist or Component.DefaultDescendantWhitelist
 	self._lifecycle = false
 	self._nextId = 0
 
@@ -258,7 +250,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._maid:GiveTask(observeMaid)
 
     local function DoClientServerCommunication()
-        local MainComponentFolder = GetOrCreate(ReplicatedStorage, "Components", "Folder")
+        local MainComponentFolder = GetOrCreate(ReplicatedStorage.Knit, "RemoteComponents", "Folder")
 
         if (IS_SERVER and self._class.Client) then
 
@@ -319,7 +311,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 		end
 
 		observeMaid:GiveTask(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
-			if (IsDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
+			if (self:_isDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
 				self:_instanceAdded(instance)
 			end
 		end))
@@ -352,7 +344,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 		do
 			local b = Instance.new("BindableEvent")
 			for _,instance in ipairs(CollectionService:GetTagged(tag)) do
-				if (IsDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
+				if (self:_isDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
 					local c = b.Event:Connect(function()
 						self:_instanceAdded(instance)
 					end)
@@ -370,9 +362,6 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	else
 		-- Only observe tag when all required components are available:
 		local tagsReady = {}
-		for _,reqComp in ipairs(self._requireComponents) do
-			tagsReady[reqComp] = false
-		end
 		local function Check()
 			for _,ready in pairs(tagsReady) do
 				if (not ready) then
@@ -465,6 +454,16 @@ function Component:_stopLifecycle()
 end
 
 
+function Component:_isDescendantOfWhitelist(instance)
+	for _,v in ipairs(self._whitelist) do
+		if (instance:IsDescendantOf(v)) then
+			return true
+		end
+	end
+	return false
+end
+
+
 function Component:_instanceAdded(instance)
 	if (self._instancesToObjects[instance]) then return end
 	if (not self._lifecycle) then
@@ -500,7 +499,7 @@ function Component:_instanceAdded(instance)
             obj.Client.Server = obj
         end
     else
-        local ComponentFolder = GetOrCreate(ReplicatedStorage, "Components", "Folder"):FindFirstChild(self._tag)
+        local ComponentFolder = GetOrCreate(ReplicatedStorage.Knit, "RemoteComponents", "Folder"):FindFirstChild(self._tag)
         if (ComponentFolder) then
 
             self._class.Server = {}
