@@ -40,7 +40,7 @@
 
                 self.Server.SignalExample:Fire()
 
-                self.Server:FunctionExample("Demo")
+				self.Server:FunctionExample("Demo")
 
 				self.Server:FunctionExamplePromise("Done"):Await() -- Promises are automatically created!
 ]]
@@ -139,6 +139,9 @@ local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
 
+local REMOTE_COMPONENT_REMOTES_LOCATION = (IS_SERVER and Instance.new("Folder", ReplicatedStorage.Knit) or ReplicatedStorage.Knit:WaitForChild("RemoteComponents"))
+REMOTE_COMPONENT_REMOTES_LOCATION.Name = "RemoteComponents"
+
 local Component = {}
 Component.__index = Component
 
@@ -149,22 +152,6 @@ local componentsByTag = {}
 
 local componentByTagCreated = Signal.new()
 local componentByTagDestroyed = Signal.new()
-
-local function GetOrCreate(Parent, Name, Class)
-    if IS_SERVER then
-        if Parent:FindFirstChild(Name) then
-            if Parent[Name]:IsA(Class) then
-                return Parent[Name]
-            end
-            error("Object is not a "..Class.."!")
-        end
-        local Folder = Instance.new(Class, Parent)
-        Folder.Name = Name
-        return Folder
-    else
-        return Parent:WaitForChild(Name)
-    end
-end
 
 
 function Component.FromTag(tag)
@@ -252,7 +239,6 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._maid:GiveTask(observeMaid)
 
     local function DoClientServerCommunication()
-        local MainComponentFolder = GetOrCreate(ReplicatedStorage.Knit, "RemoteComponents", "Folder")
 
         if (IS_SERVER and self._class.Client) then
 
@@ -294,7 +280,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
                     BindRemoteEvent(k, v)
                 end
             end
-            ComponentFolder.Parent = MainComponentFolder
+            ComponentFolder.Parent = REMOTE_COMPONENT_REMOTES_LOCATION
         end
     end
 
@@ -501,7 +487,7 @@ function Component:_instanceAdded(instance)
             obj.Client.Server = obj
         end
     else
-        local ComponentFolder = GetOrCreate(ReplicatedStorage.Knit, "RemoteComponents", "Folder"):FindFirstChild(self._tag)
+        local ComponentFolder = REMOTE_COMPONENT_REMOTES_LOCATION:FindFirstChild(self._tag)
         if (ComponentFolder) then
 
             self._class.Server = {}
