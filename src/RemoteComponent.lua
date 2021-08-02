@@ -139,8 +139,14 @@ local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
 
-local REMOTE_COMPONENT_REMOTES_LOCATION = (IS_SERVER and Instance.new("Folder", ReplicatedStorage.Knit) or ReplicatedStorage.Knit:WaitForChild("RemoteComponents"))
-REMOTE_COMPONENT_REMOTES_LOCATION.Name = "RemoteComponents"
+local COMPONENT_REMOTES_FOLDER_NAME = "ComponentRemotes"
+local COMPONENT_REMOTES_LOCATION;
+if (IS_SERVER) then
+	COMPONENT_REMOTES_LOCATION = Instance.new("Folder", game:GetService("ReplicatedStorage").Knit)
+	COMPONENT_REMOTES_LOCATION.Name = COMPONENT_REMOTES_FOLDER_NAME
+else
+	COMPONENT_REMOTES_LOCATION = game:GetService("ReplicatedStorage").Knit:WaitForChild(COMPONENT_REMOTES_FOLDER_NAME)
+end
 
 local Component = {}
 Component.__index = Component
@@ -250,10 +256,12 @@ function Component.new(tag, class, renderPriority, requireComponents)
                 local function onRemoteEvent(Player, Instance, ...)
                     local ServerComponent = self:GetFromInstance(Instance)
                     if (ServerComponent) then
-                        local func = ServerComponent._remoteConnections[eventName]
-                        if (func) then
-                            func(Player, Ser.DeserializeArgsAndUnpack(...))
-                        end
+                        local functions = ServerComponent._remoteConnections[eventName]
+						if (functions) then
+							for _, func in ipairs(functions) do
+								func(Player, Ser.DeserializeArgsAndUnpack(...))
+							end
+						end
                     end
                 end
                 remoteEvent:Connect(onRemoteEvent)
@@ -280,7 +288,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
                     BindRemoteEvent(k, v)
                 end
             end
-            ComponentFolder.Parent = REMOTE_COMPONENT_REMOTES_LOCATION
+            ComponentFolder.Parent = COMPONENT_REMOTES_LOCATION
         end
     end
 
@@ -472,45 +480,40 @@ function Component:_instanceAdded(instance)
 	end
     if (IS_SERVER) then
 		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
-
-        if (self._class.Client) then
-            obj._remoteConnections = {}
-            for k,v in pairs(self._class.Client) do
-                if (RemoteSignal.Is(v)) then
-                    obj.Client[k].Connect = function(_self, callback)
-                        obj._remoteConnections[k] = function(...)
-                            return callback(...)
-                        end
-                    end
-                end
-            end
-            obj.Client.Server = obj
-        end
-    else
-        local ComponentFolder = REMOTE_COMPONENT_REMOTES_LOCATION:FindFirstChild(self._tag)
+		if (self._class.Client) then
+			obj._remoteConnections = {}
+			for k,v in pairs(self._class.Client) do
+				if (RemoteSignal.Is(v)) then
+					obj.Client[k].Connect = function(_self, callback)
+						table.insert(obj._remoteConnections[k], callback)
+					end
+				end
+			end
+			obj.Client.Server = obj
+		end
+	else
+		local ComponentFolder = COMPONENT_REMOTES_LOCATION:FindFirstChild(self._tag)
         if (ComponentFolder) then
-
-            self._class.Server = {}
-
-            for k,v in pairs(ComponentFolder:GetChildren()) do
-                if (v:IsA("RemoteEvent")) then
-                    local remoteSignal = ClientRemoteSignal.new(v)
-                    function remoteSignal:Fire(...)
-                        self._remote:FireServer(instance, Ser.SerializeArgsAndUnpack(...))
-                    end
-                    self._class.Server[v.Name] = remoteSignal
-                elseif (v:IsA("RemoteFunction")) then
-                    self._class.Server[v.Name] = function(self, ...)
-                        return Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, Ser.SerializeArgsAndUnpack(...)))
-                    end
-                    self._class.Server["Promise"..v.Name] = function(self, ...)
-                        local args = Ser.SerializeArgs(...)
-                        return Promise.new(function(resolve)
-                            resolve(Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, table.unpack(args, 1, args.n))))
-                        end)
-                    end
-                end
-            end
+			self._class.Server = {}
+			for k,v in pairs(ComponentFolder:GetChildren()) do
+				if (v:IsA("RemoteEvent")) then
+					local remoteSignal = ClientRemoteSignal.new(v)
+					function remoteSignal:Fire(...)
+						self._remote:FireServer(instance, Ser.SerializeArgsAndUnpack(...))
+					end
+					self._class.Server[v.Name] = remoteSignal
+				elseif (v:IsA("RemoteFunction")) then
+					self._class.Server[v.Name] = function(self, ...)
+						return Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, Ser.SerializeArgsAndUnpack(...)))
+					end
+					self._class.Server["Promise"..v.Name] = function(self, ...)
+						local args = Ser.SerializeArgs(...)
+						return Promise.new(function(resolve)
+							resolve(Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, table.unpack(args, 1, args.n))))
+						end)
+					end
+				end
+			end
         end
 	end
 	self.Added:Fire(obj)
