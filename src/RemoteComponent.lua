@@ -46,85 +46,6 @@
 ]]
 
 --[[
-
-	Component.Auto(folder: Instance)
-		-> Create components automatically from descendant modules of this folder
-		-> Each module must have a '.Tag' string property
-		-> Each module optionally can have '.RenderPriority' number property
-
-	component = Component.FromTag(tag: string)
-		-> Retrieves an existing component from the tag name
-
-	Component.ObserveFromTag(tag: string, observer: (component: Component, maid: Maid) -> void): Maid
-
-	component = Component.new(tag: string, class: table [, renderPriority: RenderPriority, requireComponents: {string}])
-		-> Creates a new component from the tag name, class module, and optional render priority
-
-	component:GetAll(): ComponentInstance[]
-	component:GetFromInstance(instance: Instance): ComponentInstance | nil
-	component:GetFromID(id: number): ComponentInstance | nil
-	component:Filter(filterFunc: (comp: ComponentInstance) -> boolean): ComponentInstance[]
-	component:WaitFor(instanceOrName: Instance | string [, timeout: number = 60]): Promise<ComponentInstance>
-	component:Observe(instance: Instance, observer: (component: ComponentInstance, maid: Maid) -> void): Maid
-	component:Destroy()
-
-	component.Added(obj: ComponentInstance)
-	component.Removed(obj: ComponentInstance)
-
-	-----------------------------------------------------------------------
-
-	A component class must look something like this:
-
-		-- DEFINE
-		local MyComponent = {}
-		MyComponent.__index = MyComponent
-
-		-- CONSTRUCTOR
-		function MyComponent.new(instance)
-			local self = setmetatable({}, MyComponent)
-			return self
-		end
-
-		-- FIELDS AFTER CONSTRUCTOR COMPLETES
-		MyComponent.Instance: Instance
-
-		-- OPTIONAL LIFECYCLE HOOKS
-		function MyComponent:Init() end                     -> Called right after constructor
-		function MyComponent:Deinit() end                   -> Called right before deconstructor
-		function MyComponent:HeartbeatUpdate(dt) ... end    -> Updates every heartbeat
-		function MyComponent:SteppedUpdate(dt) ... end      -> Updates every physics step
-		function MyComponent:RenderUpdate(dt) ... end       -> Updates every render step
-
-		-- DESTRUCTOR
-		function MyComponent:Destroy()
-		end
-
-
-	A component is then registered like so:
-
-		local Component = require(Knit.Util.Component)
-		local MyComponent = require(somewhere.MyComponent)
-		local tag = "MyComponent"
-
-		local myComponent = Component.new(tag, MyComponent)
-
-
-	Components can be listened and queried:
-
-		myComponent.Added:Connect(function(instanceOfComponent)
-			-- New MyComponent constructed
-		end)
-
-		myComponent.Removed:Connect(function(instanceOfComponent)
-			-- New MyComponent deconstructed
-		end)
-
---]]
--- Component
--- Stephen Leitnick
--- July 25, 2020
-
---[[
 	Component.Auto(folder: Instance)
 		-> Create components automatically from descendant modules of this folder
 		-> Each module must have a '.Tag' string property
@@ -177,6 +98,7 @@
 			-- New MyComponent deconstructed
 		end)
 --]]
+
 local Knit = require(game:GetService("ReplicatedStorage").Knit)
 
 local Janitor = require(Knit.Util.Janitor)
