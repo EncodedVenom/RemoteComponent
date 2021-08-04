@@ -120,14 +120,69 @@
 		end)
 
 --]]
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Knit = require(ReplicatedStorage.Knit)
+-- Component
+-- Stephen Leitnick
+-- July 25, 2020
 
-local Maid = require(Knit.Util.Maid)
-local Ser = require(Knit.Util.Ser)
+--[[
+	Component.Auto(folder: Instance)
+		-> Create components automatically from descendant modules of this folder
+		-> Each module must have a '.Tag' string property
+		-> Each module optionally can have '.RenderPriority' number property
+	component = Component.FromTag(tag: string)
+		-> Retrieves an existing component from the tag name
+	Component.ObserveFromTag(tag: string, observer: (component: Component, janitor: Janitor) -> void): Janitor
+	component = Component.new(tag: string, class: table [, renderPriority: RenderPriority, requireComponents: {string}])
+		-> Creates a new component from the tag name, class module, and optional render priority
+	component:GetAll(): ComponentInstance[]
+	component:GetFromInstance(instance: Instance): ComponentInstance | nil
+	component:GetFromID(id: number): ComponentInstance | nil
+	component:Filter(filterFunc: (comp: ComponentInstance) -> boolean): ComponentInstance[]
+	component:WaitFor(instanceOrName: Instance | string [, timeout: number = 60]): Promise<ComponentInstance>
+	component:Observe(instance: Instance, observer: (component: ComponentInstance, janitor: Janitor) -> void): Janitor
+	component:Destroy()
+	component.Added(obj: ComponentInstance)
+	component.Removed(obj: ComponentInstance)
+	-----------------------------------------------------------------------
+	A component class must look something like this:
+		-- DEFINE
+		local MyComponent = {}
+		MyComponent.__index = MyComponent
+		-- CONSTRUCTOR
+		function MyComponent.new(instance)
+			local self = setmetatable({}, MyComponent)
+			return self
+		end
+		-- FIELDS AFTER CONSTRUCTOR COMPLETES
+		MyComponent.Instance: Instance
+		-- OPTIONAL LIFECYCLE HOOKS
+		function MyComponent:Init() end                     -> Called right after constructor
+		function MyComponent:Deinit() end                   -> Called right before deconstructor
+		function MyComponent:HeartbeatUpdate(dt) ... end    -> Updates every heartbeat
+		function MyComponent:SteppedUpdate(dt) ... end      -> Updates every physics step
+		function MyComponent:RenderUpdate(dt) ... end       -> Updates every render step
+		-- DESTRUCTOR
+		function MyComponent:Destroy()
+		end
+	A component is then registered like so:
+		local Component = require(Knit.Util.Component)
+		local MyComponent = require(somewhere.MyComponent)
+		local tag = "MyComponent"
+		local myComponent = Component.new(tag, MyComponent)
+	Components can be listened and queried:
+		myComponent.Added:Connect(function(instanceOfComponent)
+			-- New MyComponent constructed
+		end)
+		myComponent.Removed:Connect(function(instanceOfComponent)
+			-- New MyComponent deconstructed
+		end)
+--]]
+local Knit = require(game:GetService("ReplicatedStorage").Knit)
+
+local Janitor = require(Knit.Util.Janitor)
 local Signal = require(Knit.Util.Signal)
+local Ser = require(Knit.Util.Ser)
 local Promise = require(Knit.Util.Promise)
-local Thread = require(Knit.Util.Thread)
 local TableUtil = require(Knit.Util.TableUtil)
 local RemoteSignal = require(Knit.Util.Remote.RemoteSignal)
 local ClientRemoteSignal = require(Knit.Util.Remote.ClientRemoteSignal)
@@ -138,7 +193,6 @@ local Players = game:GetService("Players")
 local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
-
 local COMPONENT_REMOTES_FOLDER_NAME = "ComponentRemotes"
 local COMPONENT_REMOTES_LOCATION;
 if (IS_SERVER) then
@@ -166,28 +220,28 @@ end
 
 
 function Component.ObserveFromTag(tag, observer)
-	local maid = Maid.new()
-	local observeMaid = Maid.new()
-	maid:GiveTask(observeMaid)
+	local janitor = Janitor.new()
+	local observeJanitor = Janitor.new()
+	janitor:Add(observeJanitor)
 	local function OnCreated(component)
 		if (component._tag == tag) then
-			observer(component, observeMaid)
+			observer(component, observeJanitor)
 		end
 	end
 	local function OnDestroyed(component)
 		if (component._tag == tag) then
-			observeMaid:DoCleaning()
+			observeJanitor:Cleanup()
 		end
 	end
 	do
 		local component = Component.FromTag(tag)
 		if (component) then
-			Thread.SpawnNow(OnCreated, component)
+			task.spawn(OnCreated, component)
 		end
 	end
-	maid:GiveTask(componentByTagCreated:Connect(OnCreated))
-	maid:GiveTask(componentByTagDestroyed:Connect(OnDestroyed))
-	return maid
+	janitor:Add(componentByTagCreated:Connect(OnCreated))
+	janitor:Add(componentByTagDestroyed:Connect(OnDestroyed))
+	return janitor
 end
 
 
@@ -221,8 +275,8 @@ function Component.new(tag, class, renderPriority, requireComponents)
 
 	local self = setmetatable({}, Component)
 
-	self._maid = Maid.new()
-	self._lifecycleMaid = Maid.new()
+	self._janitor = Janitor.new()
+	self._lifecycleJanitor = Janitor.new()
 	self._tag = tag
 	self._class = class
 	self._objects = {}
@@ -238,63 +292,64 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._lifecycle = false
 	self._nextId = 0
 
-	self.Added = Signal.new(self._maid)
-	self.Removed = Signal.new(self._maid)
+	self.Added = Signal.new(self._janitor)
+	self.Removed = Signal.new(self._janitor)
 
-	local observeMaid = Maid.new()
-	self._maid:GiveTask(observeMaid)
+	local observeJanitor = Janitor.new()
+	self._janitor:Add(observeJanitor)
+	self._janitor:Add(self._lifecycleJanitor)
 
-    local function DoClientServerCommunication()
-
-        if (IS_SERVER and self._class.Client) then
-
-            local ComponentFolder = Instance.new("Folder")
-            ComponentFolder.Name = self._tag
-
-            local function BindRemoteEvent(eventName, remoteEvent)
-                assert(ComponentFolder:FindFirstChild(eventName) == nil, "RemoteEvent \"" .. eventName .. "\" already exists")
-                local function onRemoteEvent(Player, Instance, ...)
-                    local ServerComponent = self:GetFromInstance(Instance)
-                    if (ServerComponent) then
-                        local functions = ServerComponent._remoteConnections[eventName]
-						if (functions) then
-							for _, func in ipairs(functions) do
-								func(Player, Ser.DeserializeArgsAndUnpack(...))
-							end
+	local function CreateRemotesIfTheyExist()
+		if (IS_SERVER and self._class.Client) then
+            
+		local ComponentFolder = Instance.new("Folder")
+		ComponentFolder.Name = self._tag
+		
+		local function BindRemoteEvent(eventName, remoteEvent)
+			assert(ComponentFolder:FindFirstChild(eventName) == nil, "RemoteEvent \"" .. eventName .. "\" already exists")
+			local function onRemoteEvent(Player, Instance, ...)
+				local ServerComponent = self:GetFromInstance(Instance)
+				if (ServerComponent) then
+					local functions = ServerComponent._remoteConnections[eventName]
+					if (functions) then
+						for _, func in ipairs(functions) do
+							func(Player, Ser.DeserializeArgsAndUnpack(...))
 						end
-                    end
-                end
-                remoteEvent:Connect(onRemoteEvent)
-                local re = remoteEvent._remote
-                re.Name = eventName
-                re.Parent = ComponentFolder
-            end
+					end
+				end
+			end
+			remoteEvent:Connect(onRemoteEvent)
+                	local re = remoteEvent._remote
+                	re.Name = eventName
+                	re.Parent = ComponentFolder
+		end
+		
+		local function BindRemoteFunction(funcName, func)
+			assert(ComponentFolder:FindFirstChild(funcName) == nil, "RemoteFunction \"" .. funcName .. "\" already exists")
+			local rf = Instance.new("RemoteFunction", ComponentFolder)
+			rf.Name = funcName
+			function rf.OnServerInvoke(Player, Instance, ...)
+				local ServerComponent = self:GetFromInstance(Instance)
+				if (not ServerComponent) then warn("Server Component does not exist!") return nil end
+				return Ser.SerializeArgsAndUnpack(ServerComponent.Client[funcName](ServerComponent.Client, Player, Ser.DeserializeArgsAndUnpack(...)))
+			end
+		end
 
-            local function BindRemoteFunction(funcName, func)
-                assert(ComponentFolder:FindFirstChild(funcName) == nil, "RemoteFunction \"" .. funcName .. "\" already exists")
-                local rf = Instance.new("RemoteFunction", ComponentFolder)
-                rf.Name = funcName
-                function rf.OnServerInvoke(Player, Instance, ...)
-                    local ServerComponent = self:GetFromInstance(Instance)
-                    if (not ServerComponent) then warn("Server Component does not exist!") return nil end
-                    return Ser.SerializeArgsAndUnpack(ServerComponent.Client[funcName](ServerComponent.Client, Player, Ser.DeserializeArgsAndUnpack(...)))
-                end
+            	for k,v in pairs(self._class.Client) do
+			if (type(v)=="function") then
+				BindRemoteFunction(k, v)
+                	elseif (RemoteSignal.Is(v)) then
+                    		BindRemoteEvent(k, v)
+                	end
+            	end
+        	ComponentFolder.Parent = COMPONENT_REMOTES_LOCATION
+		self._janitor:Add(ComponentFolder)
             end
-
-            for k,v in pairs(self._class.Client) do
-                if (type(v)=="function") then
-                    BindRemoteFunction(k, v)
-                elseif (RemoteSignal.Is(v)) then
-                    BindRemoteEvent(k, v)
-                end
-            end
-            ComponentFolder.Parent = COMPONENT_REMOTES_LOCATION
-        end
-    end
+	end
 
 	local function ObserveTag()
 
-        DoClientServerCommunication()
+		CreateRemotesIfTheyExist()
 
 		local function HasRequiredComponents(instance)
 			for _,reqComp in ipairs(self._requireComponents) do
@@ -306,49 +361,43 @@ function Component.new(tag, class, renderPriority, requireComponents)
 			return true
 		end
 
-		observeMaid:GiveTask(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
+		observeJanitor:Add(CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance)
 			if (self:_isDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
 				self:_instanceAdded(instance)
 			end
 		end))
 
-		observeMaid:GiveTask(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
+		observeJanitor:Add(CollectionService:GetInstanceRemovedSignal(tag):Connect(function(instance)
 			self:_instanceRemoved(instance)
 		end))
 
 		for _,reqComp in ipairs(self._requireComponents) do
 			local comp = Component.FromTag(reqComp)
-			observeMaid:GiveTask(comp.Added:Connect(function(obj)
+			observeJanitor:Add(comp.Added:Connect(function(obj)
 				if (CollectionService:HasTag(obj.Instance, tag) and HasRequiredComponents(obj.Instance)) then
 					self:_instanceAdded(obj.Instance)
 				end
 			end))
-			observeMaid:GiveTask(comp.Removed:Connect(function(obj)
+			observeJanitor:Add(comp.Removed:Connect(function(obj)
 				if (CollectionService:HasTag(obj.Instance, tag)) then
 					self:_instanceRemoved(obj.Instance)
 				end
 			end))
 		end
 
-		observeMaid:GiveTask(function()
+		observeJanitor:Add(function()
 			self:_stopLifecycle()
 			for instance in pairs(self._instancesToObjects) do
 				self:_instanceRemoved(instance)
 			end
 		end)
 
-		do
-			local b = Instance.new("BindableEvent")
-			for _,instance in ipairs(CollectionService:GetTagged(tag)) do
-				if (self:_isDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
-					local c = b.Event:Connect(function()
-						self:_instanceAdded(instance)
-					end)
-					b:Fire()
-					c:Disconnect()
-				end
+		for _,instance in ipairs(CollectionService:GetTagged(tag)) do
+			if (self:_isDescendantOfWhitelist(instance) and HasRequiredComponents(instance)) then
+				task.spawn(function()
+					self:_instanceAdded(instance)
+				end)
 			end
-			b:Destroy()
 		end
 
 	end
@@ -367,14 +416,14 @@ function Component.new(tag, class, renderPriority, requireComponents)
 			ObserveTag()
 		end
 		local function Cleanup()
-			observeMaid:DoCleaning()
+			observeJanitor:Cleanup()
 		end
 		for _,requiredComponent in ipairs(self._requireComponents) do
 			tagsReady[requiredComponent] = false
-			self._maid:GiveTask(Component.ObserveFromTag(requiredComponent, function(_component, maid)
+			self._janitor:Add(Component.ObserveFromTag(requiredComponent, function(_component, janitor)
 				tagsReady[requiredComponent] = true
 				Check()
-				maid:GiveTask(function()
+				janitor:Add(function()
 					tagsReady[requiredComponent] = false
 					Cleanup()
 				end)
@@ -384,7 +433,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 
 	componentsByTag[tag] = self
 	componentByTagCreated:Fire(self)
-	self._maid:GiveTask(function()
+	self._janitor:Add(function()
 		componentsByTag[tag] = nil
 		componentByTagDestroyed:Fire(self)
 	end)
@@ -401,7 +450,7 @@ function Component:_startHeartbeatUpdate()
 			v:HeartbeatUpdate(dt)
 		end
 	end)
-	self._lifecycleMaid:GiveTask(self._heartbeatUpdate)
+	self._lifecycleJanitor:Add(self._heartbeatUpdate)
 end
 
 
@@ -412,7 +461,7 @@ function Component:_startSteppedUpdate()
 			v:SteppedUpdate(dt)
 		end
 	end)
-	self._lifecycleMaid:GiveTask(self._steppedUpdate)
+	self._lifecycleJanitor:Add(self._steppedUpdate)
 end
 
 
@@ -424,7 +473,7 @@ function Component:_startRenderUpdate()
 			v:RenderUpdate(dt)
 		end
 	end)
-	self._lifecycleMaid:GiveTask(function()
+	self._lifecycleJanitor:Add(function()
 		RunService:UnbindFromRenderStep(self._renderName)
 	end)
 end
@@ -446,7 +495,7 @@ end
 
 function Component:_stopLifecycle()
 	self._lifecycle = false
-	self._lifecycleMaid:DoCleaning()
+	self._lifecycleJanitor:Cleanup()
 end
 
 
@@ -472,13 +521,7 @@ function Component:_instanceAdded(instance)
 	obj._id = id
 	self._instancesToObjects[instance] = obj
 	table.insert(self._objects, obj)
-	if (self._hasInit) then
-		Thread.Spawn(function()
-			if (self._instancesToObjects[instance] ~= obj) then return end
-			obj:Init()
-		end)
-	end
-    if (IS_SERVER) then
+	if (IS_SERVER) then
 		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
 		if (self._class.Client) then
 			obj._remoteConnections = {}
@@ -493,28 +536,36 @@ function Component:_instanceAdded(instance)
 		end
 	else
 		local ComponentFolder = COMPONENT_REMOTES_LOCATION:FindFirstChild(self._tag)
-        if (ComponentFolder) then
-			self._class.Server = {}
-			for k,v in pairs(ComponentFolder:GetChildren()) do
-				if (v:IsA("RemoteEvent")) then
-					local remoteSignal = ClientRemoteSignal.new(v)
-					function remoteSignal:Fire(...)
-						self._remote:FireServer(instance, Ser.SerializeArgsAndUnpack(...))
-					end
-					self._class.Server[v.Name] = remoteSignal
-				elseif (v:IsA("RemoteFunction")) then
-					self._class.Server[v.Name] = function(self, ...)
-						return Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, Ser.SerializeArgsAndUnpack(...)))
-					end
-					self._class.Server["Promise"..v.Name] = function(self, ...)
-						local args = Ser.SerializeArgs(...)
-						return Promise.new(function(resolve)
+        	if (ComponentFolder) then
+
+            	self._class.Server = {}
+
+            	for k,v in pairs(ComponentFolder:GetChildren()) do
+                	if (v:IsA("RemoteEvent")) then
+                    		local remoteSignal = ClientRemoteSignal.new(v)
+                    		function remoteSignal:Fire(...)
+                        		self._remote:FireServer(instance, Ser.SerializeArgsAndUnpack(...))
+                    		end
+                    		self._class.Server[v.Name] = remoteSignal
+                	elseif (v:IsA("RemoteFunction")) then
+                    		self._class.Server[v.Name] = function(self, ...)
+					return Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, Ser.SerializeArgsAndUnpack(...)))
+				end
+				self._class.Server["Promise"..v.Name] = function(self, ...)
+					local args = Ser.SerializeArgs(...)
+					return Promise.new(function(resolve)
 							resolve(Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, table.unpack(args, 1, args.n))))
 						end)
-					end
 				end
 			end
+		end
         end
+	end
+	if (self._hasInit) then
+		task.defer(function()
+			if (self._instancesToObjects[instance] ~= obj) then return end
+			obj:Init()
+		end)
 	end
 	self.Added:Fire(obj)
 	return obj
@@ -591,31 +642,31 @@ end
 
 
 function Component:Observe(instance, observer)
-	local maid = Maid.new()
-	local observeMaid = Maid.new()
-	maid:GiveTask(observeMaid)
-	maid:GiveTask(self.Added:Connect(function(obj)
+	local janitor = Janitor.new()
+	local observeJanitor = Janitor.new()
+	janitor:Add(observeJanitor)
+	janitor:Add(self.Added:Connect(function(obj)
 		if (obj.Instance == instance) then
-			observer(obj, observeMaid)
+			observer(obj, observeJanitor)
 		end
 	end))
-	maid:GiveTask(self.Removed:Connect(function(obj)
+	janitor:Add(self.Removed:Connect(function(obj)
 		if (obj.Instance == instance) then
-			observeMaid:DoCleaning()
+			observeJanitor:Cleanup()
 		end
 	end))
 	for _,obj in ipairs(self._objects) do
 		if (obj.Instance == instance) then
-			Thread.SpawnNow(observer, obj, observeMaid)
+			task.spawn(observer, obj, observeJanitor)
 			break
 		end
 	end
-	return maid
+	return janitor
 end
 
 
 function Component:Destroy()
-	self._maid:Destroy()
+	self._janitor:Destroy()
 end
 
 
