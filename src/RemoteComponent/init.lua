@@ -99,15 +99,15 @@
 		end)
 --]]
 
-local Knit = require(game:GetService("ReplicatedStorage").Knit)
+local KnitInstance = game:GetService("ReplicatedStorage").Knit
+local Knit = require(KnitInstance)
 
+local Comm = require(script.Comm)
 local Janitor = require(Knit.Util.Janitor)
 local Signal = require(Knit.Util.Signal)
-local Ser = require(Knit.Util.Ser)
 local Promise = require(Knit.Util.Promise)
 local TableUtil = require(Knit.Util.TableUtil)
 local RemoteSignal = require(Knit.Util.Remote.RemoteSignal)
-local ClientRemoteSignal = require(Knit.Util.Remote.ClientRemoteSignal)
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -115,20 +115,15 @@ local Players = game:GetService("Players")
 local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
-local COMPONENT_REMOTES_FOLDER_NAME = "ComponentRemotes"
-local COMPONENT_REMOTES_LOCATION;
-if (IS_SERVER) then
-	COMPONENT_REMOTES_LOCATION = Instance.new("Folder", game:GetService("ReplicatedStorage").Knit)
-	COMPONENT_REMOTES_LOCATION.Name = COMPONENT_REMOTES_FOLDER_NAME
-else
-	COMPONENT_REMOTES_LOCATION = game:GetService("ReplicatedStorage").Knit:WaitForChild(COMPONENT_REMOTES_FOLDER_NAME)
-end
 
 local Component = {}
 Component.__index = Component
 
 -- Components will only work on instances parented under these descendants:
 Component.DefaultDescendantWhitelist = {workspace, Players}
+
+-- Components will wrap methods in promises if enabled.
+Component.UsePromisesForMethods = false
 
 local componentsByTag = {}
 
@@ -221,57 +216,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._janitor:Add(observeJanitor)
 	self._janitor:Add(self._lifecycleJanitor)
 
-	local function CreateRemotesIfTheyExist()
-		if (IS_SERVER and self._class.Client) then
-            
-		local ComponentFolder = Instance.new("Folder")
-		ComponentFolder.Name = self._tag
-		
-		local function BindRemoteEvent(eventName, remoteEvent)
-			assert(ComponentFolder:FindFirstChild(eventName) == nil, "RemoteEvent \"" .. eventName .. "\" already exists")
-			local function onRemoteEvent(Player, Instance, ...)
-				local ServerComponent = self:GetFromInstance(Instance)
-				if (ServerComponent) then
-					local functions = ServerComponent._remoteConnections[eventName]
-					if (functions) then
-						for _, func in ipairs(functions) do
-							func(Player, Ser.DeserializeArgsAndUnpack(...))
-						end
-					end
-				end
-			end
-			remoteEvent:Connect(onRemoteEvent)
-                	local re = remoteEvent._remote
-                	re.Name = eventName
-                	re.Parent = ComponentFolder
-		end
-		
-		local function BindRemoteFunction(funcName, func)
-			assert(ComponentFolder:FindFirstChild(funcName) == nil, "RemoteFunction \"" .. funcName .. "\" already exists")
-			local rf = Instance.new("RemoteFunction", ComponentFolder)
-			rf.Name = funcName
-			function rf.OnServerInvoke(Player, Instance, ...)
-				local ServerComponent = self:GetFromInstance(Instance)
-				if (not ServerComponent) then warn("Server Component does not exist!") return nil end
-				return Ser.SerializeArgsAndUnpack(ServerComponent.Client[funcName](ServerComponent.Client, Player, Ser.DeserializeArgsAndUnpack(...)))
-			end
-		end
-
-            	for k,v in pairs(self._class.Client) do
-			if (type(v)=="function") then
-				BindRemoteFunction(k, v)
-                	elseif (RemoteSignal.Is(v)) then
-                    		BindRemoteEvent(k, v)
-                	end
-            	end
-        	ComponentFolder.Parent = COMPONENT_REMOTES_LOCATION
-		self._janitor:Add(ComponentFolder)
-            end
-	end
-
 	local function ObserveTag()
-
-		CreateRemotesIfTheyExist()
 
 		local function HasRequiredComponents(instance)
 			for _,reqComp in ipairs(self._requireComponents) do
@@ -445,43 +390,44 @@ function Component:_instanceAdded(instance)
 	table.insert(self._objects, obj)
 	if (IS_SERVER) then
 		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
-		if (self._class.Client) then
-			obj._remoteConnections = {}
-			for k,v in pairs(self._class.Client) do
-				if (RemoteSignal.Is(v)) then
-					obj.Client[k].Connect = function(_self, callback)
-						table.insert(obj._remoteConnections[k], callback)
+		if obj.Client then
+			self._serverComm = Comm.Server.ForParent(obj.Instance, self._tag, self._janitor)
+			obj.Client.Server = obj
+			for name,object in pairs(obj.Client) do
+				if (type(object)=="function") then
+					self._serverComm:BindFunction(name, function(Player, ...)
+						obj.Client[name](obj.Client, Player, ...)
+					end)
+				elseif (RemoteSignal.Is(object)) then
+					obj.Client[name] = self._serverComm:CreateSignal(name)
+				end
+			end
+        end
+	elseif obj.Instance:FindFirstChild(self._tag) then
+		self._clientComm = Comm.Client.ForParent(obj.Instance, Component.UsePromisesForMethods, self._tag, self._janitor)
+		obj.Server = {}
+
+		for _, object in pairs(self._clientComm._instancesFolder:GetChildren()) do
+			print(object.Name)
+			if object.Name == "RE" then
+				for _, remoteObject in pairs(object:GetChildren()) do
+					obj.Server[remoteObject.Name] = self._clientComm:GetSignal(remoteObject.Name)
+				end
+			elseif object.Name == "RF" then
+				for _, remoteObject in pairs(object:GetChildren()) do
+					local RemoteFunction = self._clientComm:GetFunction(remoteObject.Name)
+					obj.Server[remoteObject.Name] = RemoteFunction
+					if not Component.UsePromisesForMethods then
+						obj.Server[remoteObject.Name.."Promise"] = function(...)
+							local args = table.pack({...})
+							return Promise.new(function(resolve)
+								resolve(RemoteFunction(table.unpack(args)))
+							end)
+						end
 					end
 				end
 			end
-			obj.Client.Server = obj
 		end
-	else
-		local ComponentFolder = COMPONENT_REMOTES_LOCATION:FindFirstChild(self._tag)
-        	if (ComponentFolder) then
-
-            	self._class.Server = {}
-
-            	for k,v in pairs(ComponentFolder:GetChildren()) do
-                	if (v:IsA("RemoteEvent")) then
-                    		local remoteSignal = ClientRemoteSignal.new(v)
-                    		function remoteSignal:Fire(...)
-                        		self._remote:FireServer(instance, Ser.SerializeArgsAndUnpack(...))
-                    		end
-                    		self._class.Server[v.Name] = remoteSignal
-                	elseif (v:IsA("RemoteFunction")) then
-                    		self._class.Server[v.Name] = function(self, ...)
-					return Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, Ser.SerializeArgsAndUnpack(...)))
-				end
-				self._class.Server["Promise"..v.Name] = function(self, ...)
-					local args = Ser.SerializeArgs(...)
-					return Promise.new(function(resolve)
-							resolve(Ser.DeserializeArgsAndUnpack(v:InvokeServer(instance, table.unpack(args, 1, args.n))))
-						end)
-				end
-			end
-		end
-        end
 	end
 	if (self._hasInit) then
 		task.defer(function()
