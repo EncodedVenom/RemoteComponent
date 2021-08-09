@@ -395,14 +395,14 @@ function Component:_instanceAdded(instance)
 			for name,object in pairs(obj.Client) do
 				if (type(object)=="function") then
 					self._serverComm:BindFunction(name, function(Player, ...)
-						obj.Client[name](obj.Client, Player, ...)
+						return obj.Client[name](obj.Client, Player, ...)
 					end)
 				elseif (RemoteSignal.Is(object)) then
 					obj.Client[name] = self._serverComm:CreateSignal(name)
 				end
 			end
         end
-	elseif obj.Instance:FindFirstChild(self._tag) then
+	elseif obj.Instance:WaitForChild(self._tag, 5) then
 		self._clientComm = Comm.Client.ForParent(obj.Instance, Component.UsePromisesForMethods, self._tag, self._janitor)
 		obj.Server = {}
 
