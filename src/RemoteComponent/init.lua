@@ -42,7 +42,7 @@
 
 				self.Server:FunctionExample("Demo")
 
-				self.Server:FunctionExamplePromise("Done"):Await() -- Promises are automatically created!
+				self.Server:FunctionExamplePromise("Done"):Await() -- Promises are automatically created if Component.UsePromisesForMethods is false!
 ]]
 
 --[[
