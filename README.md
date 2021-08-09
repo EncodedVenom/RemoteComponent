@@ -96,6 +96,8 @@ Bootstrap:
 ```lua
 local RemoteComponent = require(path.to.remoteComponent)
 
+RemoteComponent.UsePromisesForMethods = true -- If set to true, all functions turn into promises. If false, a promisified function will be added alongside the normal one.
+
 RemoteComponent.Auto(folderHousingTheRemoteComponents) -- or however you want to set this up.
 ```
 
