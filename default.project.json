@@ -1,7 +1,6 @@
 {
 	"name": "RemoteComponent",
 	"tree": {
-		"$path": "src/RemoteComponent.lua",
-		"$ignoreUnknownInstances": true
+		"$path": "src/RemoteComponent"
 	}
 }
