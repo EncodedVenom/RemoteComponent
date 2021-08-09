@@ -99,8 +99,7 @@
 		end)
 --]]
 
-local KnitInstance = game:GetService("ReplicatedStorage").Knit
-local Knit = require(KnitInstance)
+local Knit = require(game:GetService("ReplicatedStorage").Knit)
 
 local Comm = require(script.Comm)
 local Janitor = require(Knit.Util.Janitor)
