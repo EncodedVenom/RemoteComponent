@@ -409,7 +409,6 @@ function Component:_instanceAdded(instance)
 		obj.Server = {}
 
 		for _, object in pairs(self._clientComm._instancesFolder:GetChildren()) do
-			print(object.Name)
 			if object.Name == "RE" then
 				for _, remoteObject in pairs(object:GetChildren()) do
 					obj.Server[remoteObject.Name] = self._clientComm:GetSignal(remoteObject.Name)
