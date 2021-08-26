@@ -397,7 +397,9 @@ function Component:_instanceAdded(instance)
 			for name,object in pairs(obj.Client) do
 				if (type(object)=="function") then
 					self._serverComm:BindFunction(name, function(Player, ...)
-						return obj.Client[name](obj.Client, Player, ...)
+						local args = {...} -- This is weird. Adding for backwards compatibility.
+						table.remove(args, 1)
+						return obj.Client[name](obj.Client, Player, table.unpack(args))
 					end)
 				elseif (RemoteSignal.Is(object)) then
 					obj.Client[name] = self._serverComm:CreateSignal(name)
@@ -418,12 +420,7 @@ function Component:_instanceAdded(instance)
 					local RemoteFunction = self._clientComm:GetFunction(remoteObject.Name)
 					obj.Server[remoteObject.Name] = RemoteFunction
 					if not Component.UsePromisesForMethods then
-						obj.Server[remoteObject.Name.."Promise"] = function(...)
-							local args = table.pack({...})
-							return Promise.new(function(resolve)
-								resolve(RemoteFunction(table.unpack(args)))
-							end)
-						end
+						obj.Server[remoteObject.Name.."Promise"] = Promise.promisify(obj.Server[remoteObject.Name])
 					end
 				end
 			end
