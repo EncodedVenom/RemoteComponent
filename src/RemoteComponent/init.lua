@@ -215,6 +215,18 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._janitor:Add(observeJanitor)
 	self._janitor:Add(self._lifecycleJanitor)
 
+	if self._class.Client and IS_SERVER then
+		self._typesOfObjectsToAdd = {}
+		for name,object in pairs(self._class.Client) do
+			if (type(object)=="function") then
+				self._typesOfObjectsToAdd[name] = "function"
+			elseif (RemoteSignal.Is(object)) then
+				self._typesOfObjectsToAdd[name] = "signal"
+			end
+		end
+	end
+
+
 	local function ObserveTag()
 
 		local function HasRequiredComponents(instance)
@@ -392,32 +404,32 @@ function Component:_instanceAdded(instance)
 	if (IS_SERVER) then
 		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
 		if obj.Client then
-			self._serverComm = Comm.Server.ForParent(obj.Instance, self._tag, self._janitor)
+			obj._serverComm = Comm.Server.ForParent(instance, self._tag, self._janitor)
 			obj.Client.Server = obj
-			for name,object in pairs(obj.Client) do
-				if (type(object)=="function") then
-					self._serverComm:BindFunction(name, function(Player, ...)
+			for name,object in pairs(self._typesOfObjectsToAdd) do
+				if (object=="function") then -- Logic to determine what type of object is what is done in the .new constructor. Fixes bug with REs not being properly created.
+					obj._serverComm:BindFunction(name, function(Player, ...)
 						local args = {...} -- This is weird. Adding for backwards compatibility.
 						table.remove(args, 1)
 						return obj.Client[name](obj.Client, Player, table.unpack(args))
 					end)
-				elseif (RemoteSignal.Is(object)) then
-					obj.Client[name] = self._serverComm:CreateSignal(name)
+				elseif (object=="signal") then
+					obj.Client[name] = obj._serverComm:CreateSignal(name)
 				end
 			end
-        end
-	elseif obj.Instance:WaitForChild(self._tag, 5) then
-		self._clientComm = Comm.Client.ForParent(obj.Instance, Component.UsePromisesForMethods, self._tag, self._janitor)
+		end
+	elseif instance:WaitForChild(self._tag, 5) then
+		obj._clientComm = Comm.Client.ForParent(instance, Component.UsePromisesForMethods, self._tag, self._janitor)
 		obj.Server = {}
 
-		for _, object in pairs(self._clientComm._instancesFolder:GetChildren()) do
+		for _, object in pairs(obj._clientComm._instancesFolder:GetChildren()) do
 			if object.Name == "RE" then
 				for _, remoteObject in pairs(object:GetChildren()) do
-					obj.Server[remoteObject.Name] = self._clientComm:GetSignal(remoteObject.Name)
+					obj.Server[remoteObject.Name] = obj._clientComm:GetSignal(remoteObject.Name)
 				end
 			elseif object.Name == "RF" then
 				for _, remoteObject in pairs(object:GetChildren()) do
-					local RemoteFunction = self._clientComm:GetFunction(remoteObject.Name)
+					local RemoteFunction = obj._clientComm:GetFunction(remoteObject.Name)
 					obj.Server[remoteObject.Name] = RemoteFunction
 					if not Component.UsePromisesForMethods then
 						obj.Server[remoteObject.Name.."Promise"] = Promise.promisify(obj.Server[remoteObject.Name])
