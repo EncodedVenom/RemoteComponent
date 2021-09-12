@@ -107,9 +107,11 @@ local Signal = require(Knit.Util.Signal)
 local Promise = require(Knit.Util.Promise)
 local TableUtil = require(Knit.Util.TableUtil)
 local RemoteSignal = require(Knit.Util.Remote.RemoteSignal)
+local RemoteProperty = require(Knit.Util.Remote.RemoteProperty)
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 
 local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
@@ -378,39 +380,38 @@ function Component:_isDescendantOfWhitelist(instance)
 	return false
 end
 
+function Component:_handleRemoteLogic(obj)
+	local objectInstance = obj.Instance
+	if IS_SERVER then
+		if self._class.Client then
+			obj.Client = TableUtil.Copy(self._class.Client) -- Separate the class Client folder from the object Client folder.
 
-function Component:_instanceAdded(instance)
-	if (self._instancesToObjects[instance]) then return end
-	if (not self._lifecycle) then
-		self:_startLifecycle()
-	end
-	self._nextId = (self._nextId + 1)
-	local id = (self._tag .. tostring(self._nextId))
-	local obj = self._class.new(instance)
-	obj.Instance = instance
-	obj._id = id
-	self._instancesToObjects[instance] = obj
-	table.insert(self._objects, obj)
-	if (IS_SERVER) then
-		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
-		if obj.Client then
-			obj.Client = TableUtil.Copy(obj.Client) -- Separate the class Client folder from the object Client folder.
-			obj._serverComm = Comm.Server.ForParent(instance, self._tag, self._janitor)
-			obj.Client.Server = obj
-			for name,object in pairs(self._class.Client) do
-				if (type(object)=="function") then
+			obj._serverComm = Comm.Server.ForParent(objectInstance, self._tag, self._janitor)
+			for name,objectInClientTable in pairs(self._class.Client) do
+				if (type(objectInClientTable)=="function") then
 					obj._serverComm:BindFunction(name, function(Player, ...)
 						local args = {...} -- This is weird. Adding for backwards compatibility.
 						table.remove(args, 1)
 						return obj.Client[name](obj.Client, Player, table.unpack(args))
 					end)
-				elseif (RemoteSignal.Is(object)) then
+				elseif (RemoteSignal.Is(objectInClientTable)) then
 					obj.Client[name] = obj._serverComm:CreateSignal(name)
+				elseif (RemoteProperty.Is(objectInClientTable)) then
+					objectInstance:SetAttribute(name, objectInClientTable:Get())
+					local list = objectInstance:GetAttribute("_componentRemotePropertyList_")
+					if list then
+						list = HttpService:JSONDecode(list)
+					else
+						list = {}
+					end
+					table.insert(list, name)
+					objectInstance:SetAttribute("_componentRemotePropertyList_", HttpService:JSONEncode(list))
 				end
 			end
+			obj.Client.Server = obj
 		end
-	elseif instance:WaitForChild(self._tag, 5) then
-		obj._clientComm = Comm.Client.ForParent(instance, Component.UsePromisesForMethods, self._tag, self._janitor)
+	elseif objectInstance:WaitForChild(self._tag, 5) then
+		obj._clientComm = Comm.Client.ForParent(objectInstance, Component.UsePromisesForMethods, self._tag, self._janitor)
 		obj.Server = {}
 
 		for _, object in pairs(obj._clientComm._instancesFolder:GetChildren()) do
@@ -428,6 +429,59 @@ function Component:_instanceAdded(instance)
 				end
 			end
 		end
+
+		local list = objectInstance:GetAttribute("_componentRemotePropertyList_")
+		if list then
+			list = HttpService:JSONDecode(list)
+			for _, name in pairs(list) do
+				obj.Server[name] = {
+					Get = function(_self)
+						return objectInstance:GetAttribute(name)
+					end,
+					Changed = Signal.new()
+				}
+				if not obj._remotePropertyChangedSignals then
+					obj._remotePropertyChangedSignals = {}
+				end
+				table.insert(obj._remotePropertyChangedSignals, obj.Server[name].Changed)
+				table.insert(obj._remotePropertyChangedSignals, objectInstance:GetAttributeChangedSignal(name):Connect(function()
+					obj.Server[name].Changed:Fire(objectInstance:GetAttribute(name))
+				end))
+			end
+		end
+	end
+end
+
+function Component:_remoteRemoteLogic(obj)
+	if obj._remotePropertyChangedSignals then
+		for _, object in pairs(obj._remotePropertyChangedSignals) do
+			if object.Destroy then object:Destroy()
+			elseif object.Disconnect then object:Disconnect() end
+		end
+		obj._remotePropertyChangedSignals = nil
+	end
+	local target = IS_SERVER and "_serverComm" or "_clientComm"
+	if obj[target] then obj[target]:Destroy() end
+end
+
+
+function Component:_instanceAdded(instance: Instance)
+	if (self._instancesToObjects[instance]) then return end
+	if (not self._lifecycle) then
+		self:_startLifecycle()
+	end
+	self._nextId = (self._nextId + 1)
+	local id = (self._tag .. tostring(self._nextId))
+	local obj = self._class.new(instance)
+	obj.Instance = instance
+	obj._id = id
+	self._instancesToObjects[instance] = obj
+	table.insert(self._objects, obj)
+
+	self:_handleRemoteLogic(obj) -- RemoteComponent hook
+
+	if (IS_SERVER) then
+		instance:SetAttribute(ATTRIBUTE_ID_NAME, id)
 	end
 	if (self._hasInit) then
 		task.defer(function()
@@ -452,6 +506,9 @@ function Component:_instanceRemoved(instance)
 				instance:SetAttribute(ATTRIBUTE_ID_NAME, nil)
 			end
 			self.Removed:Fire(obj)
+
+			self:_remoteRemoteLogic(obj)
+
 			obj:Destroy()
 			obj._destroyed = true
 			TableUtil.FastRemove(self._objects, i)
