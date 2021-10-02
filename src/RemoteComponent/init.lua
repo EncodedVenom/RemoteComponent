@@ -452,7 +452,7 @@ function Component:_handleRemoteLogic(obj)
 	end
 end
 
-function Component:_remoteRemoteLogic(obj)
+function Component:_removeRemoteLogic(obj)
 	if obj._remotePropertyChangedSignals then
 		for _, object in pairs(obj._remotePropertyChangedSignals) do
 			if object.Destroy then object:Destroy()
@@ -507,7 +507,7 @@ function Component:_instanceRemoved(instance)
 			end
 			self.Removed:Fire(obj)
 
-			self:_remoteRemoteLogic(obj)
+			self:_removeRemoteLogic(obj)
 
 			obj:Destroy()
 			obj._destroyed = true
