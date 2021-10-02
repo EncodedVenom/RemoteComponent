@@ -17,7 +17,7 @@ Here is an example of how a RemoteComponent works.
 Server:
 ```lua
 local Knit = require(game:GetService("ReplicatedStorage").Knit)
-local Maid = require(Knit.Util.Maid)
+local Janitor = require(Knit.Util.Janitor)
 local RemoteSignal = require(Knit.Util.Remote.RemoteSignal)
 
 local ServerComponent = {
@@ -31,7 +31,7 @@ ServerComponent.Tag = "RemoteComponentExample"
 
 function ServerComponent.new(instance)
     local self = setmetatable({}, ServerComponent)
-    self._maid = Maid.new()
+    self._janitor = Janitor.new()
     return self
 end
 
@@ -58,7 +58,7 @@ function ServerComponent.Client:FunctionInNeedOfServerLogic(Player)
 end
 
 function ServerComponent:Destroy()
-    self._maid:Destroy()
+    self._janitor:Destroy()
 end
 
 return ServerComponent
@@ -67,7 +67,7 @@ return ServerComponent
 Client:
 ```lua
 local Knit = require(game:GetService("ReplicatedStorage").Knit)
-local Maid = require(Knit.Util.Maid)
+local Janitor = require(Knit.Util.Janitor)
 
 local ClientComponent = {}
 ClientComponent.__index = ClientComponent
@@ -76,7 +76,7 @@ ClientComponent.Tag = "RemoteComponentExample"
 
 function ClientComponent.new(instance)
     local self = setmetatable({}, ClientComponent)
-    self._maid = Maid.new()
+    self._janitor = Janitor.new()
     return self
 end
 
@@ -86,7 +86,7 @@ function ClientComponent:Init()
 end
 
 function ClientComponent:Destroy()
-    self._maid:Destroy()
+    self._janitor:Destroy()
 end
 
 return ClientComponent
