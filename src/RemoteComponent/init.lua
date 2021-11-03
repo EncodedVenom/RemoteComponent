@@ -16,6 +16,10 @@
         If anyone sees anything wrong in how I made this module and wants to challenge or add something--be my guest! I'm a single person who is doing this for fun and I miss things.
 
     Fork Changes:
+
+			Component.UsePromisesForMethods
+				Toggles Comm's promisification of functions. For meaningful results, enable/disable on the server.
+
             [SERVER ONLY]
             Component.Client: table
                 A table containing RemoteSignals and functions that will be accessible to the client. Recommended behavior is for RemoteSignals to be added directly.
@@ -24,7 +28,10 @@
                     *Component.Client.Server is a direct reference to the Component itself!
 
                 Component = {Client = {
-                    	SignalExample = RemoteSignal.new();
+                    	SignalExample = Knit.CreateSignal();
+
+						-- If desired, the following also works. I don't see a use case but if you want it here it is.
+						-- SignalExample = "SIGNAL_MARKER"
                 	}
 		}
 
@@ -40,9 +47,7 @@
 
                 self.Server.SignalExample:Fire()
 
-				self.Server:FunctionExample("Demo")
-
-				self.Server:FunctionExamplePromise("Done"):Await() -- Promises are automatically created if Component.UsePromisesForMethods is false!
+				self.Server:FunctionExample("Demo"):await() -- If using promises!
 ]]
 
 --[[
@@ -99,45 +104,39 @@
 		end)
 --]]
 
-local Knit = require(game:GetService("ReplicatedStorage").Knit)
+local Comm = require(script.Parent.Comm)
+local Signal = require(script.Parent.Signal)
+local Promise = require(script.Parent.Promise)
+local TableUtil = require(script.Parent.TableUtil)
+local Janitor = require(script.Parent.Janitor)
 
-local Comm = require(script.Comm)
-local Janitor = require(Knit.Util.Janitor)
-local Signal = require(Knit.Util.Signal)
-local Promise = require(Knit.Util.Promise)
-local TableUtil = require(Knit.Util.TableUtil)
-local RemoteSignal = require(Knit.Util.Remote.RemoteSignal)
-local RemoteProperty = require(Knit.Util.Remote.RemoteProperty)
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
 
 local IS_SERVER = RunService:IsServer()
 local DEFAULT_WAIT_FOR_TIMEOUT = 60
 local ATTRIBUTE_ID_NAME = "ComponentServerId"
 
-local Component = {}
-Component.__index = Component
+local RemoteComponent = {}
+RemoteComponent.__index = RemoteComponent
 
 -- Components will only work on instances parented under these descendants:
-Component.DefaultDescendantWhitelist = {workspace, Players}
+RemoteComponent.DefaultDescendantWhitelist = {workspace, Players}
 
 -- Components will wrap methods in promises if enabled.
-Component.UsePromisesForMethods = false
+RemoteComponent.UsePromisesForMethods = false
 
 local componentsByTag = {}
 
 local componentByTagCreated = Signal.new()
 local componentByTagDestroyed = Signal.new()
 
-
-function Component.FromTag(tag)
+function RemoteComponent.FromTag(tag)
 	return componentsByTag[tag]
 end
 
-
-function Component.ObserveFromTag(tag, observer)
+function RemoteComponent.ObserveFromTag(tag, observer)
 	local janitor = Janitor.new()
 	local observeJanitor = Janitor.new()
 	janitor:Add(observeJanitor)
@@ -152,7 +151,7 @@ function Component.ObserveFromTag(tag, observer)
 		end
 	end
 	do
-		local component = Component.FromTag(tag)
+		local component = RemoteComponent.FromTag(tag)
 		if (component) then
 			task.spawn(OnCreated, component)
 		end
@@ -162,13 +161,12 @@ function Component.ObserveFromTag(tag, observer)
 	return janitor
 end
 
-
-function Component.Auto(folder)
+function RemoteComponent.Auto(folder)
 	local function Setup(moduleScript)
 		local m = require(moduleScript)
 		assert(type(m) == "table", "Expected table for component")
 		assert(type(m.Tag) == "string", "Expected .Tag property")
-		Component.new(m.Tag, m, m.RenderPriority, m.RequiredComponents)
+		RemoteComponent.new(m.Tag, m, m.RenderPriority, m.RequiredComponents)
 	end
 	for _,v in ipairs(folder:GetDescendants()) do
 		if (v:IsA("ModuleScript")) then
@@ -182,8 +180,7 @@ function Component.Auto(folder)
 	end)
 end
 
-
-function Component.new(tag, class, renderPriority, requireComponents)
+function RemoteComponent.new(tag, class, renderPriority, requireComponents)
 
 	assert(type(tag) == "string", "Argument #1 (tag) should be a string; got " .. type(tag))
 	assert(type(class) == "table", "Argument #2 (class) should be a table; got " .. type(class))
@@ -191,7 +188,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	assert(type(class.Destroy) == "function", "Class must contain a :Destroy function")
 	assert(componentsByTag[tag] == nil, "Component already bound to this tag")
 
-	local self = setmetatable({}, Component)
+	local self = setmetatable({}, RemoteComponent)
 
 	self._janitor = Janitor.new()
 	self._lifecycleJanitor = Janitor.new()
@@ -206,7 +203,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 	self._hasDeinit = (type(class.Deinit) == "function")
 	self._renderPriority = renderPriority or Enum.RenderPriority.Last.Value
 	self._requireComponents = requireComponents or {}
-	self._whitelist = class.DescendantWhitelist or Component.DefaultDescendantWhitelist
+	self._whitelist = class.DescendantWhitelist or RemoteComponent.DefaultDescendantWhitelist
 	self._lifecycle = false
 	self._nextId = 0
 
@@ -223,7 +220,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 
 		local function HasRequiredComponents(instance)
 			for _,reqComp in ipairs(self._requireComponents) do
-				local comp = Component.FromTag(reqComp)
+				local comp = RemoteComponent.FromTag(reqComp)
 				if (comp:GetFromInstance(instance) == nil) then
 					return false
 				end
@@ -242,7 +239,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 		end))
 
 		for _,reqComp in ipairs(self._requireComponents) do
-			local comp = Component.FromTag(reqComp)
+			local comp = RemoteComponent.FromTag(reqComp)
 			observeJanitor:Add(comp.Added:Connect(function(obj)
 				if (CollectionService:HasTag(obj.Instance, tag) and HasRequiredComponents(obj.Instance)) then
 					self:_instanceAdded(obj.Instance)
@@ -292,7 +289,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 			tagsReady[requiredComponent] = false
 		end
 		for _,requiredComponent in ipairs(self._requireComponents) do
-			self._janitor:Add(Component.ObserveFromTag(requiredComponent, function(_component, janitor)
+			self._janitor:Add(RemoteComponent.ObserveFromTag(requiredComponent, function(_component, janitor)
 				tagsReady[requiredComponent] = true
 				Check()
 				janitor:Add(function()
@@ -315,7 +312,7 @@ function Component.new(tag, class, renderPriority, requireComponents)
 end
 
 
-function Component:_startHeartbeatUpdate()
+function RemoteComponent:_startHeartbeatUpdate()
 	local all = self._objects
 	self._heartbeatUpdate = RunService.Heartbeat:Connect(function(dt)
 		for _,v in ipairs(all) do
@@ -326,7 +323,7 @@ function Component:_startHeartbeatUpdate()
 end
 
 
-function Component:_startSteppedUpdate()
+function RemoteComponent:_startSteppedUpdate()
 	local all = self._objects
 	self._steppedUpdate = RunService.Stepped:Connect(function(_, dt)
 		for _,v in ipairs(all) do
@@ -337,7 +334,7 @@ function Component:_startSteppedUpdate()
 end
 
 
-function Component:_startRenderUpdate()
+function RemoteComponent:_startRenderUpdate()
 	local all = self._objects
 	self._renderName = (self._tag .. "RenderUpdate")
 	RunService:BindToRenderStep(self._renderName, self._renderPriority, function(dt)
@@ -351,7 +348,7 @@ function Component:_startRenderUpdate()
 end
 
 
-function Component:_startLifecycle()
+function RemoteComponent:_startLifecycle()
 	self._lifecycle = true
 	if (self._hasHeartbeatUpdate) then
 		self:_startHeartbeatUpdate()
@@ -365,13 +362,13 @@ function Component:_startLifecycle()
 end
 
 
-function Component:_stopLifecycle()
+function RemoteComponent:_stopLifecycle()
 	self._lifecycle = false
 	self._lifecycleJanitor:Cleanup()
 end
 
 
-function Component:_isDescendantOfWhitelist(instance)
+function RemoteComponent:_isDescendantOfWhitelist(instance)
 	for _,v in ipairs(self._whitelist) do
 		if (instance:IsDescendantOf(v)) then
 			return true
@@ -380,92 +377,35 @@ function Component:_isDescendantOfWhitelist(instance)
 	return false
 end
 
-function Component:_handleRemoteLogic(obj)
+function RemoteComponent:_handleRemoteLogic(obj)
 	local objectInstance = obj.Instance
 	if IS_SERVER then
 		if self._class.Client then
-			obj.Client = TableUtil.Copy(self._class.Client) -- Separate the class Client folder from the object Client folder.
+			obj.Client = TableUtil.Copy(self._class.Client) :: table -- Separate the class Client folder from the object Client folder.
+			-- fix weird lint bug by adding :: table
 
-			obj._serverComm = Comm.Server.ForParent(objectInstance, self._tag, self._janitor)
-			for name,objectInClientTable in pairs(self._class.Client) do
-				if (type(objectInClientTable)=="function") then
-					obj._serverComm:BindFunction(name, function(Player, ...)
-						local args = {...} -- This is weird. Adding for backwards compatibility.
-						table.remove(args, 1)
-						return obj.Client[name](obj.Client, Player, table.unpack(args))
-					end)
-				elseif (RemoteSignal.Is(objectInClientTable)) then
-					obj.Client[name] = obj._serverComm:CreateSignal(name)
-				elseif (RemoteProperty.Is(objectInClientTable)) then
-					objectInstance:SetAttribute(name, objectInClientTable:Get())
-					local list = objectInstance:GetAttribute("_componentRemotePropertyList_")
-					if list then
-						list = HttpService:JSONDecode(list)
-					else
-						list = {}
-					end
-					table.insert(list, name)
-					objectInstance:SetAttribute("_componentRemotePropertyList_", HttpService:JSONEncode(list))
+			obj._serverComm = Comm.ServerComm.new(objectInstance, self._tag)
+			for k,v in pairs(obj.Client) do
+                if type(v) == "function" then
+					obj._serverComm:WrapMethod(obj.Client, k)
+				elseif tostring(v) == "SIGNAL_MARKER" then
+					obj.Client[k] = obj._serverComm:CreateSignal(k)
 				end
 			end
 			obj.Client.Server = obj
 		end
 	elseif objectInstance:WaitForChild(self._tag, 5) then
-		obj._clientComm = Comm.Client.ForParent(objectInstance, Component.UsePromisesForMethods, self._tag, self._janitor)
-		obj.Server = {}
-
-		for _, object in pairs(obj._clientComm._instancesFolder:GetChildren()) do
-			if object.Name == "RE" then
-				for _, remoteObject in pairs(object:GetChildren()) do
-					obj.Server[remoteObject.Name] = obj._clientComm:GetSignal(remoteObject.Name)
-				end
-			elseif object.Name == "RF" then
-				for _, remoteObject in pairs(object:GetChildren()) do
-					local RemoteFunction = obj._clientComm:GetFunction(remoteObject.Name)
-					obj.Server[remoteObject.Name] = RemoteFunction
-					if not Component.UsePromisesForMethods then
-						obj.Server[remoteObject.Name.."Promise"] = Promise.promisify(obj.Server[remoteObject.Name])
-					end
-				end
-			end
-		end
-
-		local list = objectInstance:GetAttribute("_componentRemotePropertyList_")
-		if list then
-			list = HttpService:JSONDecode(list)
-			for _, name in pairs(list) do
-				obj.Server[name] = {
-					Get = function(_self)
-						return objectInstance:GetAttribute(name)
-					end,
-					Changed = Signal.new()
-				}
-				if not obj._remotePropertyChangedSignals then
-					obj._remotePropertyChangedSignals = {}
-				end
-				table.insert(obj._remotePropertyChangedSignals, obj.Server[name].Changed)
-				table.insert(obj._remotePropertyChangedSignals, objectInstance:GetAttributeChangedSignal(name):Connect(function()
-					obj.Server[name].Changed:Fire(objectInstance:GetAttribute(name))
-				end))
-			end
-		end
+		obj.Server = Comm.ClientComm.new(objectInstance, RemoteComponent.UsePromisesForMethods, self._tag):BuildObject()
 	end
 end
 
-function Component:_removeRemoteLogic(obj)
-	if obj._remotePropertyChangedSignals then
-		for _, object in pairs(obj._remotePropertyChangedSignals) do
-			if object.Destroy then object:Destroy()
-			elseif object.Disconnect then object:Disconnect() end
-		end
-		obj._remotePropertyChangedSignals = nil
-	end
+function RemoteComponent:_remoteRemoteLogic(obj)
 	local target = IS_SERVER and "_serverComm" or "_clientComm"
 	if obj[target] then obj[target]:Destroy() end
 end
 
 
-function Component:_instanceAdded(instance: Instance)
+function RemoteComponent:_instanceAdded(instance: Instance)
 	if (self._instancesToObjects[instance]) then return end
 	if (not self._lifecycle) then
 		self:_startLifecycle()
@@ -494,7 +434,7 @@ function Component:_instanceAdded(instance: Instance)
 end
 
 
-function Component:_instanceRemoved(instance)
+function RemoteComponent:_instanceRemoved(instance)
 	if (not self._instancesToObjects[instance]) then return end
 	self._instancesToObjects[instance] = nil
 	for i,obj in ipairs(self._objects) do
@@ -507,7 +447,7 @@ function Component:_instanceRemoved(instance)
 			end
 			self.Removed:Fire(obj)
 
-			self:_removeRemoteLogic(obj)
+			self:_remoteRemoteLogic(obj)
 
 			obj:Destroy()
 			obj._destroyed = true
@@ -521,17 +461,17 @@ function Component:_instanceRemoved(instance)
 end
 
 
-function Component:GetAll()
+function RemoteComponent:GetAll()
 	return TableUtil.CopyShallow(self._objects)
 end
 
 
-function Component:GetFromInstance(instance)
+function RemoteComponent:GetFromInstance(instance)
 	return self._instancesToObjects[instance]
 end
 
 
-function Component:GetFromID(id)
+function RemoteComponent:GetFromID(id)
 	for _,v in ipairs(self._objects) do
 		if (v._id == id) then
 			return v
@@ -541,12 +481,12 @@ function Component:GetFromID(id)
 end
 
 
-function Component:Filter(filterFunc)
+function RemoteComponent:Filter(filterFunc)
 	return TableUtil.Filter(self._objects, filterFunc)
 end
 
 
-function Component:WaitFor(instance, timeout)
+function RemoteComponent:WaitFor(instance, timeout)
 	local isName = (type(instance) == "string")
 	local function IsInstanceValid(obj)
 		return ((isName and obj.Instance.Name == instance) or ((not isName) and obj.Instance == instance))
@@ -557,16 +497,16 @@ function Component:WaitFor(instance, timeout)
 		end
 	end
 	local lastObj = nil
-	return Promise.FromEvent(self.Added, function(obj)
+	return Promise.fromEvent(self.Added, function(obj)
 		lastObj = obj
 		return IsInstanceValid(obj)
-	end):Then(function()
+	end):andThen(function()
 		return lastObj
-	end):Timeout(timeout or DEFAULT_WAIT_FOR_TIMEOUT)
+	end):timeout(timeout or DEFAULT_WAIT_FOR_TIMEOUT)
 end
 
 
-function Component:Observe(instance, observer)
+function RemoteComponent:Observe(instance, observer)
 	local janitor = Janitor.new()
 	local observeJanitor = Janitor.new()
 	janitor:Add(observeJanitor)
@@ -590,9 +530,8 @@ function Component:Observe(instance, observer)
 end
 
 
-function Component:Destroy()
+function RemoteComponent:Destroy()
 	self._janitor:Destroy()
 end
 
-
-return Component
+return RemoteComponent
