@@ -16,25 +16,16 @@ Here is an example of how a RemoteComponent works.
 
 Server:
 ```lua
-local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
-local Janitor = require(Knit.Util.Janitor)
+local RemoteComponent = require(Path.To.Remote.Component)
 
-local ServerComponent = {
-    Client = {
-        Signal = Knit.CreateSignal(); -- Can use "SIGNAL_MARKER" instead, but it's advised to use this method.
-    }
+local ServerComponent = RemoteComponent.new({Tag="Test"})
+ServerComponent.Client = {
+    Signal = Knit.CreateSignal(); -- Can use "SIGNAL_MARKER" instead, but it's advised to use this method.
 }
-ServerComponent.__index = ServerComponent
 
-ServerComponent.Tag = "RemoteComponentExample"
+ServerComponent.RemoteNamespace = "RemoteComponentExample"
 
-function ServerComponent.new(instance)
-    local self = setmetatable({}, ServerComponent)
-    self._janitor = Janitor.new()
-    return self
-end
-
-function ServerComponent:Init()
+function ServerComponent:Start()
     self.Client.Signal:Connect(function(Player)
         print(Player.Name .. " has fired the Remote!")
     end)
@@ -56,66 +47,28 @@ function ServerComponent.Client:FunctionInNeedOfServerLogic(Player)
     return result
 end
 
-function ServerComponent:Destroy()
-    self._janitor:Destroy()
-end
-
 return ServerComponent
 ```
 
 Client:
 ```lua
-local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
-local Janitor = require(game:GetService("ReplicatedStorage").Packages.Janitor)
+local RemoteComponent = require(Path.To.Remote.Component)
 
-local ClientComponent = {}
-ClientComponent.__index = ClientComponent
+local ClientComponent = RemoteComponent.new({Tag="Test"})
 
-ClientComponent.Tag = "RemoteComponentExample"
+ClientComponent.RemoteNamespace = "RemoteComponentExample"
 
-function ClientComponent.new(instance)
-    local self = setmetatable({}, ClientComponent)
-    self._janitor = Janitor.new()
-    return self
-end
-
-function ClientComponent:Init()
+function ClientComponent:Start()
     print(self.Server:Hello("Hey "..self.Instance.Name.."!")) -- -> true
     self.Server.Signal:Fire()
 end
 
-function ClientComponent:Destroy()
-    self._janitor:Destroy()
-end
-
 return ClientComponent
-```
-
-Bootstrap:
-```lua
-local RemoteComponent = require(path.to.remoteComponent)
-
-RemoteComponent.UsePromisesForMethods = true -- If set to true, all functions turn into promises. Will not create promisified versions of functions.
-
-RemoteComponent.Auto(folderHousingTheRemoteComponents) -- or however you want to set this up.
 ```
 
 ## Installation
 
 Use Wally and add to your wally.toml:
 ```
-RemoteComponent = "encodedvenom/remotecomponent@^0.1.0-rc.2"
-```
-
-Add the project as a git submodule:
-```bash
-git submodule add https://github.com/EncodedVenom/RemoteComponent ./vendor/RemoteComponent
-```
-
-The git submodule includes a `default.project.json` file which syncs the file to your workflow. The module can be referenced as shown:
-
-```json
-"RemoteComponent": {
-    "$path": "vendor/RemoteComponent/default.project.json"
-}
+RemoteComponent = "encodedvenom/remotecomponent@^0.2.0-rc.2"
 ```
