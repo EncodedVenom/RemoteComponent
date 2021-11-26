@@ -1,0 +1,10 @@
+[package]
+name = "encodedvenom/remotecomponent"
+version = "0.2.0-rc.2"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[dependencies]
+Signal = "sleitnick/signal@^1.0"
+Trove = "sleitnick/trove@^0.1.3"
+TableUtil = "sleitnick/table-util@^1.0"
