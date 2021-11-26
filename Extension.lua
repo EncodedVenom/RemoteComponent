@@ -20,8 +20,11 @@ function RemoteComponentExtension.Starting(component)
 			end
 			component.Client.Server = component
 		end
-	elseif objectInstance:WaitForChild(component.RemoteNamespace, 5) then
-		component.Server = Comm.ClientComm.new(objectInstance, component.UsePromisesForMethods, component.RemoteNamespace):BuildObject()
+	else
+		if not component.RemoteNamespace then return end
+		if objectInstance:WaitForChild(component.RemoteNamespace, 5) then
+			component.Server = Comm.ClientComm.new(objectInstance, component.UsePromisesForMethods, component.RemoteNamespace):BuildObject()
+		end
 	end
 end
 
