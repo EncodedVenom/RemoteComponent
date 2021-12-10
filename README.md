@@ -16,9 +16,10 @@ Here is an example of how a RemoteComponent works.
 
 Server:
 ```lua
-local RemoteComponent = require(Path.To.Remote.Component)
+local Component = require(Path.To.Component)
+local RemoteComponent = require(Path.To.RemoteComponent)
 
-local ServerComponent = RemoteComponent.new({Tag="Test"})
+local ServerComponent = Component.new({Tag="Test",Extensions={RemoteComponent}})
 ServerComponent.Client = {
     Signal = Knit.CreateSignal(); -- Can use "SIGNAL_MARKER" instead, but it's advised to use this method.
 }
@@ -52,9 +53,10 @@ return ServerComponent
 
 Client:
 ```lua
-local RemoteComponent = require(Path.To.Remote.Component)
+local Component = require(Path.To.Component)
+local RemoteComponent = require(Path.To.RemoteComponent)
 
-local ClientComponent = RemoteComponent.new({Tag="Test"})
+local ClientComponent = Component.new({Tag="Test",Extensions={RemoteComponent}})
 
 ClientComponent.RemoteNamespace = "RemoteComponentExample"
 
@@ -70,5 +72,5 @@ return ClientComponent
 
 Use Wally and add to your wally.toml:
 ```
-RemoteComponent = "encodedvenom/remotecomponent@^0.2.0-rc.2"
+RemoteComponent = "encodedvenom/remotecomponent@^0.2.2"
 ```
