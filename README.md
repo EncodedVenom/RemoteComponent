@@ -2,12 +2,6 @@
 
 A better solution to fix communication across the client-server boundary with regards to [Knit Components](https://github.com/Sleitnick/Knit/)
 
-## Why did I make this?
-
-I wrote a module which is referred to on my profile as [knit-comms-module](https://github.com/EncodedVenom/knit-comms-module). While this does work, it is quite inelegant in application compared to how Knit does several other tasks.
-
-Enter RemoteComponents.
-
 RemoteComponents are a fork of Components. They exist for one purpose: handling client and server communication for you--without the hassle of another module to learn. They are designed to be very familiar to use and pick up. If you've ever created a Knit Service with client-exposed methods and remotes, you can most certainly use this.
 
 ## Example
@@ -72,5 +66,5 @@ return ClientComponent
 
 Use Wally and add to your wally.toml:
 ```
-RemoteComponent = "encodedvenom/remotecomponent@^0.2.2"
+RemoteComponent = "encodedvenom/remotecomponent@^1"
 ```
