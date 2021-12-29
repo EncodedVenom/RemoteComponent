@@ -1,47 +1,36 @@
-type AncestorList = {Instance}
+local IS_SERVER = game:GetService("RunService"):IsServer()
+local Comm = require(script.Parent.Comm)
+Comm = if IS_SERVER then Comm.ServerComm else Comm.ClientComm
+local TableUtil = require(script.Parent.TableUtil)
 
-type ExtensionFn = (any) -> nil
+local RemoteComponentExtension = {}
 
-type Extension = {
-	Constructing: ExtensionFn?,
-	Constructed: ExtensionFn?,
-	Starting: ExtensionFn?,
-	Started: ExtensionFn?,
-	Stopping: ExtensionFn?,
-	Stopped: ExtensionFn?,
-}
+function RemoteComponentExtension.Starting(component)
+	local objectInstance = component.Instance
+	if IS_SERVER then
+		if component.Client then
+			component.Client = TableUtil.Copy(component.Client, true)
 
-type ComponentConfig = {
-	Tag: string,
-	Ancestors: AncestorList?,
-	Extensions: {Extension}?,
-}
-
-local RemoteComponent = require(script.Component)
-local RemoteComponentExtension = require(script.Extension)
-local Signal = require(script.Parent.Signal)
-local Trove = require(script.Parent.Trove)
-
-local DEFAULT_ANCESTORS = {workspace, game:GetService("Players")}
-
-function RemoteComponent.new(config: ComponentConfig)
-    local customComponent = {}
-	customComponent.__index = customComponent
-	customComponent.__tostring = function()
-		return "Component<" .. config.Tag .. ">"
+			component._serverComm = Comm.new(objectInstance, component.RemoteNamespace)
+			for k,v in pairs(component.Client) do
+				if type(v) == "function" then
+					component._serverComm:WrapMethod(component.Client, k)
+				elseif tostring(v) == "SIGNAL_MARKER" then -- Allow Knit.CreateSignal()
+					component.Client[k] = component._serverComm:CreateSignal(k)
+				elseif type(v) == "table" and tostring(v[1]) == "PROPERTY_MARKER" then
+					component.Client[k] = component._serverComm:CreateProperty(k, v[2])
+				end
+			end
+			component.Client.Server = component
+		end
+	else
+		component.Server = Comm.new(objectInstance, component.UsePromisesForMethods, component.RemoteNamespace):BuildObject()
 	end
-	customComponent._ancestors = config.Ancestors or DEFAULT_ANCESTORS
-	customComponent._instancesToComponents = {}
-	customComponent._components = {}
-	customComponent._trove = Trove.new()
-	customComponent._extensions = config.Extensions or {RemoteComponentExtension}
-	customComponent._started = false
-	customComponent.Tag = config.Tag
-	customComponent.Started = customComponent._trove:Construct(Signal)
-	customComponent.Stopped = customComponent._trove:Construct(Signal)
-	setmetatable(customComponent, RemoteComponent)
-	customComponent:_setup()
-	return customComponent
 end
 
-return RemoteComponent
+function RemoteComponentExtension.Stopping(component)
+	local target = IS_SERVER and "_serverComm" or "_clientComm"
+	if component[target] then component[target]:Destroy() end
+end
+
+return RemoteComponentExtension
