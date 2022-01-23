@@ -1,6 +1,6 @@
 # RemoteComponent
 
-A better solution to fix communication across the client-server boundary with regards to [Knit Components](https://github.com/Sleitnick/Knit/)
+A better solution to fix communication across the client-server boundary with regards to [Knit Components](https://sleitnick.github.io/RbxUtil/api/Component)
 
 RemoteComponents are a fork of Components. They exist for one purpose: handling client and server communication for you--without the hassle of another module to learn. They are designed to be very familiar to use and pick up. If you've ever created a Knit Service with client-exposed methods and remotes, you can most certainly use this.
 
@@ -64,7 +64,14 @@ return ClientComponent
 
 ## Installation
 
-Use Wally and add to your wally.toml:
+Use Wally and add to your wally.toml. The following is the current up-to-date version:
 ```
-RemoteComponent = "encodedvenom/remotecomponent@^1"
+RemoteComponent = "encodedvenom/remotecomponent@1.0.1"
 ```
+
+Alternatively you may copy the `init.lua` file in the repository and use it as you see fit.
+
+## Changelogs
+
+### Update 1.0.1
+Changed default behavior. Will now use component tag as a namespace if none is specified.

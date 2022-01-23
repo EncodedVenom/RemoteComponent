@@ -1,17 +1,19 @@
 local IS_SERVER = game:GetService("RunService"):IsServer()
 local Comm = require(script.Parent.Comm)
-Comm = if IS_SERVER then Comm.ServerComm else Comm.ClientComm
 local TableUtil = require(script.Parent.TableUtil)
+
+Comm = if IS_SERVER then Comm.ServerComm else Comm.ClientComm
 
 local RemoteComponentExtension = {}
 
 function RemoteComponentExtension.Starting(component)
 	local objectInstance = component.Instance
+	local nameSpace = component.RemoteNamespace or component.Tag
 	if IS_SERVER then
 		if component.Client then
 			component.Client = TableUtil.Copy(component.Client, true)
 
-			component._serverComm = Comm.new(objectInstance, component.RemoteNamespace)
+			component._serverComm = Comm.new(objectInstance, nameSpace)
 			for k,v in pairs(component.Client) do
 				if type(v) == "function" then
 					component._serverComm:WrapMethod(component.Client, k)
@@ -24,7 +26,7 @@ function RemoteComponentExtension.Starting(component)
 			component.Client.Server = component
 		end
 	else
-		component.Server = Comm.new(objectInstance, component.UsePromisesForMethods, component.RemoteNamespace):BuildObject()
+		component.Server = Comm.new(objectInstance, component.UsePromisesForMethods, nameSpace):BuildObject()
 	end
 end
 

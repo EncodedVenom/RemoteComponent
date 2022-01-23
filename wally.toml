@@ -1,6 +1,6 @@
 [package]
 name = "encodedvenom/remotecomponent"
-version = "1.0.0"
+version = "1.0.1"
 description = "An extension to sleitnick/component that allows for remote communication."
 registry = "https://github.com/UpliftGames/wally-index"
 realm = "shared"
