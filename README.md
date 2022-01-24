@@ -66,7 +66,7 @@ return ClientComponent
 
 Use Wally and add to your wally.toml. The following is the current up-to-date version:
 ```
-RemoteComponent = "encodedvenom/remotecomponent@1.0.1"
+RemoteComponent = "encodedvenom/remotecomponent@1.0.2"
 ```
 
 Alternatively you may copy the `init.lua` file in the repository and use it as you see fit.
