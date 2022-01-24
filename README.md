@@ -75,3 +75,6 @@ Alternatively you may copy the `init.lua` file in the repository and use it as y
 
 ### Update 1.0.1
 Changed default behavior. Will now use component tag as a namespace if none is specified.
+
+### Update 1.0.2
+Will automatically delete namespaces that a component is trying to bind to. Observed and added due to the extension function "Starting" somehow running twice.

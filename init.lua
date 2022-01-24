@@ -13,6 +13,9 @@ function RemoteComponentExtension.Starting(component)
 		if component.Client then
 			component.Client = TableUtil.Copy(component.Client, true)
 
+			if objectInstance:FindFirstChild(nameSpace) then
+				objectInstance[nameSpace]:Destroy()
+			end
 			component._serverComm = Comm.new(objectInstance, nameSpace)
 			for k,v in pairs(component.Client) do
 				if type(v) == "function" then
