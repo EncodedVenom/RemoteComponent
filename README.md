@@ -2,7 +2,7 @@
 
 A better solution to fix communication across the client-server boundary with regards to [Knit Components](https://sleitnick.github.io/RbxUtil/api/Component)
 
-RemoteComponents are a fork of Components. They exist for one purpose: handling client and server communication for you--without the hassle of another module to learn. They are designed to be very familiar to use and pick up. If you've ever created a Knit Service with client-exposed methods and remotes, you can most certainly use this.
+RemoteComponents are an extension of Components. They exist for one purpose: handling client and server communication for you--without the hassle of another module to learn. They are designed to be very familiar to use and pick up. If you've ever created a Knit Service with client-exposed methods and remotes, you can most certainly use this.
 
 ## Example
 
