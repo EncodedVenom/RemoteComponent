@@ -66,7 +66,7 @@ return ClientComponent
 
 Use Wally and add to your wally.toml. The following is the current up-to-date version:
 ```
-RemoteComponent = "encodedvenom/remotecomponent@1.0.2"
+RemoteComponent = "encodedvenom/remotecomponent@1.0.3"
 ```
 
 Alternatively you may copy the `init.lua` file in the repository and use it as you see fit.
@@ -78,3 +78,6 @@ Changed default behavior. Will now use component tag as a namespace if none is s
 
 ### Update 1.0.2
 Will automatically delete namespaces that a component is trying to bind to. Observed and added due to the extension function "Starting" somehow running twice.
+
+### Update 1.0.3
+Dependency update, and now supports unreliable remotes 
