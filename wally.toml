@@ -7,4 +7,4 @@ realm = "shared"
 
 [dependencies]
 TableUtil = "sleitnick/table-util@^1.0"
-Comm = "sleitnick/comm@^0.2.2"
+Comm = "sleitnick/comm@^1.0.1"

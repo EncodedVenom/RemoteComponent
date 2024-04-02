@@ -24,6 +24,8 @@ function RemoteComponentExtension.Starting(component)
 					component.Client[k] = component._serverComm:CreateSignal(k)
 				elseif type(v) == "table" and tostring(v[1]) == "PROPERTY_MARKER" then
 					component.Client[k] = component._serverComm:CreateProperty(k, v[2])
+				elseif tostring(v) == "UNRELIABLE_SIGNAL_MARKER" then
+					component.Client[k] = component._serverComm:CreateSignal(k, true)
 				end
 			end
 			component.Client.Server = component
