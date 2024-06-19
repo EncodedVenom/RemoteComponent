@@ -6,17 +6,13 @@ export default defineConfig({
   description: "An easy way to network Knit components",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
-    nav: [
-      { text: 'Home', link: '/' },
-      { text: 'Examples', link: '/markdown-examples' }
-    ],
 
     sidebar: [
       {
         text: 'Examples',
         items: [
-          { text: 'Quickstart', link: '/quickstart' },
-          { text: 'API', link: '/api' }
+          { text: 'Quickstart', link: '/RemoteComponent/quickstart' },
+          { text: 'API', link: '/RemoteComponent/api' }
         ]
       }
     ],
