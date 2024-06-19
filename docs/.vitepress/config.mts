@@ -12,8 +12,8 @@ export default defineConfig({
       {
         text: 'Examples',
         items: [
-          { text: 'Quickstart', link: '/RemoteComponent/quickstart' },
-          { text: 'API', link: '/RemoteComponent/api' }
+          { text: 'Quickstart', link: '/quickstart' },
+          { text: 'API', link: '/api' }
         ]
       }
     ],
