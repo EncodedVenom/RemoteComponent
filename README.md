@@ -2,9 +2,7 @@
 
 A better solution to fix communication across the client-server boundary with regards to [Knit Components](https://sleitnick.github.io/RbxUtil/api/Component) using the extension framework.
 
-## Installation
-
-See [the wiki](https://encodedvenom.github.io/RemoteComponent/) for documentation regarding installation, a sample project, and the API.
+Read [the wiki](https://encodedvenom.github.io/RemoteComponent/) for documentation regarding installation, an example project, and the API.
 
 ## Changelogs
 
