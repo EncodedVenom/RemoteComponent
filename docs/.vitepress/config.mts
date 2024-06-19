@@ -4,7 +4,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "RemoteComponent",
   description: "An easy way to network Knit components",
-  base: "/remotecomponent/",
+  base: "/RemoteComponent/",
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
 
