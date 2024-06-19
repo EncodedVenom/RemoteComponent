@@ -1,0 +1,1 @@
+import{_ as e,c as s,o as i,a1 as a}from"./chunks/framework.BtBsNfS7.js";const u=JSON.parse('{"title":"API","description":"","frontmatter":{},"headers":[],"relativePath":"api.md","filePath":"api.md"}'),t={name:"api.md"},n=a("",32),o=[n];function l(p,r,h,c,d,m){return i(),s("div",null,o)}const g=e(t,[["render",l]]);export{u as __pageData,g as default};
