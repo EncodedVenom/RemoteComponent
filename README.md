@@ -1,3 +1,9 @@
+# Archived
+
+This Project is Archived and should not be used for new work.
+
+This is done for the [same reasons as the upstream repository](https://github.com/Sleitnick/Knit).
+
 # RemoteComponent
 
 A better solution to fix communication across the client-server boundary with regards to [Knit Components](https://sleitnick.github.io/RbxUtil/api/Component) using the extension framework.
